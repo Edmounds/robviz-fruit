@@ -62,10 +62,20 @@ async function github(endpoint: string, maximum: number, binary = false): Promis
 }
 
 async function source() {
-  const repo = process.env.ROBVIZ_PLUGIN_REPO || "";
-  const revision = process.env.ROBVIZ_PLUGIN_REF || "";
-  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo) || !/^[a-f0-9]{40}$/.test(revision)) {
-    throw new Error("Configure ROBVIZ_PLUGIN_REPO and ROBVIZ_PLUGIN_REF (full commit SHA) on the server");
+  const repo = process.env.ROBVIZ_PLUGIN_REPO || "Edmounds/robviz-plugins";
+  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo)) {
+    throw new Error("Invalid ROBVIZ_PLUGIN_REPO configured on the server");
+  }
+
+  let revision = process.env.ROBVIZ_PLUGIN_REF || "";
+  if (!revision) {
+    const commit = JSON.parse((await github(`repos/${repo}/commits/main`, 1024 * 1024)).toString());
+    if (typeof commit?.sha !== "string" || !/^[a-f0-9]{40}$/.test(commit.sha)) {
+      throw new Error("Failed to resolve latest commit SHA for repository main branch");
+    }
+    revision = commit.sha;
+  } else if (!/^[a-f0-9]{40}$/.test(revision)) {
+    throw new Error("Configure ROBVIZ_PLUGIN_REF (full commit SHA) on the server");
   }
   const release = process.env.ROBVIZ_PLUGIN_RELEASE;
   if (release) {

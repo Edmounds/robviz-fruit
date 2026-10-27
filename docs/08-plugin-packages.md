@@ -113,9 +113,11 @@ npm run preview -- --host 127.0.0.1
 ## 在线安装与升级
 
 Vite 开发与预览服务提供同一个 `plugin-management/` 接口。
-在服务进程环境中设置可信来源，不接受浏览器提交任意下载 URL：
+默认插件仓库为 `Edmounds/robviz-plugins`。未配置 `ROBVIZ_PLUGIN_REF` 时自动读取 `main` 分支最新 commit SHA。
+如需指定其他仓库或固定版本，可在服务进程环境中设置：
 
 ```bash
+# 可选覆盖：指定插件仓库与 commit SHA（默认 Edmounds/robviz-plugins 与 main 分支）
 export ROBVIZ_PLUGIN_REPO=OWNER/REPOSITORY
 export ROBVIZ_PLUGIN_REF=FULL_40_CHARACTER_COMMIT_SHA
 # 可选：从此固定版本 Release 下载。tag 必须解析为上面的 commit。

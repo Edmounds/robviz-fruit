@@ -57,7 +57,7 @@ export function PluginPackages() {
     {[...pluginLoadReport.errors, ...(installed?.errors ?? [])].map((value, i) => <Notice key={`${value.id}-${i}`} tone="error">{value.id}: {value.error}</Notice>)}
     {installed?.plugins.map((plugin) => <div className="settings-row" key={plugin.id}>
       <span>{plugin.name} <code>{plugin.id}@{plugin.version}</code></span>
-      {DEFAULT_PLUGIN_IDS.includes(plugin.id) ? <span>随 Core 更新，可在插件设置中禁用</span> :
+      {DEFAULT_PLUGIN_IDS.includes(plugin.id) ? null :
         <Button disabled={busy} onClick={() => void action("uninstall", plugin.id)}>卸载</Button>}
     </div>)}
     {catalog && <>
