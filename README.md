@@ -15,8 +15,8 @@
 TF 视野初始自适应、VSCode 风格圆角间距与全站字体缩放自适应、
 TF 树、视角跟踪目标、大 PCD 加载清理、布局配置保存/加载（rviz 式）、分割停靠工作区、
 多机器标签页、中英文与明暗主题、动态 ESM 插件系统与统一设计系统。
-业务与专业工具由官方插件包（`robviz_plugins`）提供：
-遥控 Teleop、Nav 目标与初始位姿、曲线面板、2D 地图编辑、航点编辑与底图对齐、URDF 模型编辑、图像面板与 WebRTC 视频流、图像无损采集、远程 Shell 终端。
+图像、曲线和终端作为默认插件随 Core 提供，源码与产物都位于 `plugins/<id>/`。
+官方插件仓（`robviz_plugins`）提供遥控 Teleop、Nav 目标与初始位姿、2D 地图编辑、航点编辑与底图对齐、URDF 模型编辑和图像无损采集。
 
 **稳定性**：四层故障舱壁（面板错误边界 / 消息分发隔离 / 显示器隔离 / 连接 Worker 崩溃自愈），
 任何单个功能崩溃不影响其余功能与数据流，已用故障注入实测（技术方案 §8.8）。
@@ -54,6 +54,12 @@ npm run dev
 
 `npm run dev` 只启动前端，不默认启动终端网关。需要时另运行 `npm run terminal`。
 本机开发也可使用 `ROBVIZ_START_TERMINAL=1 npm run dev` 显式同时启动终端网关。
+
+修改默认插件源码后运行 `npm run plugins:build`，然后刷新页面。
+`npm run build` 自动编译默认插件，并将其声明资源和索引放入 `dist/plugins/`。
+静态部署只需发布 `dist/`。构建不会自动包含本地安装的其他插件或私有插件。
+默认插件允许启用和禁用，不允许网页卸载或替换。
+构建和安装说明见 [ESM 插件包与本地 SDK](docs/08-plugin-packages.md)。
 
 浏览器打开 dev server 地址，连接机器人上的 `foxglove_bridge`，例如
 `ws://<robot-ip>:8765`。机器人侧启动方式见[连接真机](#连接真机)。
@@ -152,7 +158,9 @@ v1/v2 配置文件直接拒绝导入。通过 v3 校验的配置若仍含独立 
 
 ## 插件
 
-RobViz 默认打包并启用 3D 视图 (`view-3d`)、地图编辑 (`map-editor`)、URDF 编辑 (`urdf-editor`)、航点编辑 (`waypoints-editor`)、图像采集 (`image-capture`) 以及 Teleop、Nav Goals、Waypoints Maker 等插件。插件可声明其承载位置：顶栏独立页面 (`pages`) 或是主页停靠板块 (`panels` / `sections`)。各机器的 Teleop 参数、导航话题和航点录制表单会随会话配置保存。切换机器标签时，内置 Teleop 会暂停并清除输入，Waypoints Maker 只清理订阅，不取消已接受的导航。宿主不会为第三方插件制定通用的非活动会话写入策略。
+3D 视图由宿主提供。RobViz 默认打包并启用 `image`、`plot` 和 `terminal` 插件。
+其他功能需单独安装。插件可声明顶栏独立页面 (`pages`) 或主页停靠板块 (`panels` / `sections`)。
+插件状态随机器会话配置保存。宿主不会为插件制定通用的非活动会话写入策略。
 
 Waypoints Maker 订阅 recorder 的状态和提示话题，并通过
 `/fruit/waypoint_maker/command` 发送严格 JSON 命令。它只允许活动且在线的会话写入，正式文件与调试文件由 recorder 的文件 ID allowlist 管理。

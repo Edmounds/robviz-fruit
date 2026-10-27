@@ -1,7 +1,7 @@
 import { Button as e, Field as t, ImageViewer as n, Notice as r, NumberInput as i, TextInput as a, Toolbar as o, validateInputs as s } from "@robviz/core";
 import { useCallback as c, useEffect as l, useRef as u, useState as d } from "react";
 import { jsx as f, jsxs as p } from "react/jsx-runtime";
-// image/settingsApi.ts
+//#region plugins/image/settingsApi.ts
 async function m(e, t = "GET", n) {
 	let r = await fetch(e, {
 		method: t,
@@ -21,7 +21,8 @@ function g(e) {
 function _(e) {
 	return m("/api/image-settings/defaults", "POST", e);
 }
-// image/ImageSettings.tsx
+//#endregion
+//#region plugins/image/ImageSettings.tsx
 function v({ ctx: n }) {
 	let m = n.locale === "en", v = n.pluginStates.image, y = typeof v?.reloadService == "string" ? v.reloadService : "/robviz/reload_image_settings", [b, x] = d(), [S, C] = d(!1), [w, T] = d(""), E = u(null);
 	l(() => {
@@ -35,7 +36,7 @@ function v({ ctx: n }) {
 		};
 	}, []);
 	let D = c(async (e) => {
-		if (b && !S && s(E.current)) {
+		if (!(!b || S || !s(E.current))) {
 			C(!0), T("");
 			try {
 				if (!/^\/(?:[A-Za-z_][A-Za-z0-9_]*)(?:\/[A-Za-z_][A-Za-z0-9_]*)*$/.test(y)) throw Error("Invalid ROS service name");
@@ -147,7 +148,8 @@ function v({ ctx: n }) {
 		]
 	});
 }
-// image/index.tsx
+//#endregion
+//#region plugins/image/index.tsx
 function y({ ctx: e, state: t, onStateChange: r, onClose: i }) {
 	let a = t;
 	return /* @__PURE__ */ f(n, {
@@ -188,4 +190,5 @@ var b = {
 		description: "实时视频流 (H.264) 与相机数据流"
 	}]
 };
+//#endregion
 export { y as ImagePanelPlugin, b as default };

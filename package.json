@@ -13,14 +13,15 @@
   "scripts": {
     "dev": "vite",
     "ui:preview": "vite --config vite.ui.config.ts --open /ui.html",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && npm run plugins:build && vite build",
     "sdk:build": "tsc -p tsconfig.sdk.json",
     "lint": "oxlint",
     "preview": "vite preview",
     "terminal": "tsx terminal/server.ts",
     "test": "vitest run",
     "plugin:new": "tsx scripts/new-plugin.ts",
-    "plugins:scan": "tsx scripts/index-plugins.ts"
+    "plugins:scan": "tsx scripts/index-plugins.ts",
+    "plugins:build": "tsx scripts/build-default-plugins.ts"
   },
   "dependencies": {
     "@foxglove/rosmsg": "^5.0.5",
@@ -47,6 +48,7 @@
     "oxlint": "^1.75.0",
     "tsx": "^4.23.12",
     "typescript": "~6.0.2",
+    "uplot": "^1.6.32",
     "vite": "^8.2.0",
     "vitest": "^4.1.10",
     "ws": "^8.21.3"

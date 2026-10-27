@@ -3,9 +3,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 import { afterEach, describe, expect, it } from "vitest";
-import { packagePathSchema, pluginManifestSchema } from "../../src/plugins/manifest";
+import { build, createServer, type InlineConfig } from "vite";
+import { DEFAULT_PLUGIN_IDS, packagePathSchema, pluginManifestSchema } from "../../src/plugins/manifest";
 import { parsePluginDefinition } from "../../src/plugins/definition";
-import { catalogSchema, installCatalogPlugin, readPackage, recoverPluginTransaction, scanPlugins, withPluginLock } from "../../scripts/plugin-files";
+import { catalogSchema, installCatalogPlugin, pluginFilesPlugin, readPackage, recoverPluginTransaction, scanPlugins, withPluginLock } from "../../scripts/plugin-files";
 
 const manifest = { id: "sample", name: "Sample", version: "1.0.0", sdkApiVersion: 1, entry: "index.js", files: ["index.js"], requiredServices: [] };
 const directories: string[] = [];
@@ -94,5 +95,61 @@ describe("plugin package protocol", () => {
     });
     expect((await readPackage(root, "sample")).version).toBe("1.0.0");
     expect(JSON.parse(await readFile(join(root, "index.json"), "utf8")).plugins[0].id).toBe("sample");
+  });
+
+  it("emits only declared default-plugin assets and rejects symlinks in static builds", async () => {
+    const root = await fixture();
+    for (const id of [...DEFAULT_PLUGIN_IDS, "private-fruit"]) {
+      const dir = join(root, "plugins", id);
+      await mkdir(dir, { recursive: true });
+      await writeFile(join(dir, "manifest.json"), JSON.stringify({ ...manifest, id }));
+      await writeFile(join(dir, "index.js"), `export default {id:'${id}'};`);
+      await writeFile(join(dir, "index.tsx"), "private source, not a declared runtime asset");
+    }
+    const config: InlineConfig = { root, configFile: false, publicDir: false, logLevel: "silent",
+      plugins: [pluginFilesPlugin(join(root, "private-runtime"))],
+      build: { write: false, rolldownOptions: { input: join(root, "sample", "index.js") } } };
+    const result = await build(config);
+    if (Array.isArray(result) || !("output" in result)) throw new Error("Expected one static build");
+    const assets = new Map(result.output.filter((file) => file.type === "asset").map((file) => [file.fileName, String(file.source)]));
+    const index = JSON.parse(assets.get("plugins/index.json")!);
+    expect(index.plugins.map((plugin: { id: string }) => plugin.id)).toEqual(DEFAULT_PLUGIN_IDS);
+    expect(index.errors).toEqual([]);
+    expect([...assets.keys()].sort()).toEqual(["plugins/index.json", ...DEFAULT_PLUGIN_IDS.flatMap((id) =>
+      [`plugins/${id}/manifest.json`, `plugins/${id}/index.js`])].sort());
+    for (const id of DEFAULT_PLUGIN_IDS) {
+      expect(assets.get(`plugins/${id}/index.js`)).toBe(await readFile(join(root, "plugins", id, "index.js"), "utf8"));
+    }
+    await rm(join(root, "plugins", "image", "index.js"));
+    await symlink(join(root, "sample", "index.js"), join(root, "plugins", "image", "index.js"));
+    await expect(build(config)).rejects.toThrow("symlinks");
+  });
+
+  it("rejects web uninstall and catalog replacement of default plugins without deleting sources", async () => {
+    const root = await fixture();
+    await mkdir(join(root, "image"));
+    const original = { ...manifest, id: "image" };
+    await writeFile(join(root, "image", "manifest.json"), JSON.stringify(original));
+    await writeFile(join(root, "image", "index.js"), "original output");
+    await writeFile(join(root, "image", "index.tsx"), "local source edits");
+    const server = await createServer({ configFile: false, root, logLevel: "silent",
+      plugins: [pluginFilesPlugin(root)], server: { host: "127.0.0.1", port: 0 } });
+    try {
+      await server.listen();
+      const address = server.httpServer!.address();
+      if (!address || typeof address === "string") throw new Error("Expected HTTP test server");
+      const response = await fetch(`http://127.0.0.1:${address.port}/plugin-management/uninstall`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: "image" }),
+      });
+      expect(response.status).toBe(400);
+      expect((await response.json()).error).toContain("updated with Core");
+      const files: Record<string, Buffer> = { "manifest.json": Buffer.from(JSON.stringify({ ...original, version: "2.0.0" })), "index.js": Buffer.from("replacement") };
+      const catalog = { sdkApiVersion: 1, plugins: [{ id: "image", version: "2.0.0", directory: "image",
+        sha256: Object.fromEntries(Object.entries(files).map(([name, bytes]) => [name, createHash("sha256").update(bytes).digest("hex")])) }] };
+      await expect(withPluginLock(root, () => installCatalogPlugin(root, catalog, "image", async (path) => files[path.split("/").at(-1)!]))).rejects.toThrow("updated with Core");
+      expect((await readPackage(root, "image")).version).toBe("1.0.0");
+      expect(await readFile(join(root, "image", "index.js"), "utf8")).toBe("original output");
+      expect(await readFile(join(root, "image", "index.tsx"), "utf8")).toBe("local source edits");
+    } finally { await server.close(); }
   });
 });

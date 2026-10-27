@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 export const SDK_API_VERSION = 1;
+export const DEFAULT_PLUGIN_IDS: readonly string[] = ["image", "plot", "terminal"];
 export const pluginIdSchema = z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).max(80);
 export const packagePathSchema = z.string().min(1).max(240).refine(
   (path) => /^[a-zA-Z0-9][a-zA-Z0-9._/-]*$/.test(path) && path.split("/").every((part) => part && part !== "." && part !== ".."),

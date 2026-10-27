@@ -6,7 +6,7 @@ import { isIP } from "node:net";
 import { resolve, join, extname } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Plugin } from "vite";
-import { packagePathSchema, pluginIdSchema, pluginManifestSchema, type PluginManifest } from "../src/plugins/manifest.ts";
+import { DEFAULT_PLUGIN_IDS, packagePathSchema, pluginIdSchema, pluginManifestSchema, type PluginManifest } from "../src/plugins/manifest.ts";
 import { z } from "zod";
 
 export const DEFAULT_PLUGIN_DIRECTORY = resolve(process.env.ROBVIZ_PLUGIN_DIR || "plugins");
@@ -154,6 +154,7 @@ export async function recoverPluginTransaction(root: string) {
 }
 
 async function swapPackage(root: string, id: string, stage: string, remove = false) {
+  if (DEFAULT_PLUGIN_IDS.includes(id)) throw new Error("Default plugins are updated with Core; disable the plugin instead");
   const target = join(root, id);
   const backup = join(root, `.previous-${id}`);
   const journal = join(root, ".transaction.json");
@@ -396,8 +397,25 @@ async function servePackage(root: string, req: IncomingMessage, res: ServerRespo
 }
 
 export function pluginFilesPlugin(root = DEFAULT_PLUGIN_DIRECTORY): Plugin {
+  let bundledRoot: string;
   return {
     name: "robviz-plugin-files",
+    configResolved(config) {
+      bundledRoot = resolve(config.root, "plugins");
+    },
+    async generateBundle() {
+      const plugins: PluginManifest[] = [];
+      for (const id of DEFAULT_PLUGIN_IDS) {
+        const manifest = await readPackage(bundledRoot, id);
+        for (const file of ["manifest.json", ...manifest.files]) {
+          this.emitFile({ type: "asset", fileName: `plugins/${id}/${file}`,
+            source: await readFile(await packageFile(bundledRoot, id, file)) });
+        }
+        plugins.push(manifest);
+      }
+      this.emitFile({ type: "asset", fileName: "plugins/index.json",
+        source: JSON.stringify({ plugins, errors: [] }, null, 2) + "\n" });
+    },
     async configureServer(server) {
       await withPluginLock(root, async () => { await recoverPluginTransaction(root); await scanPlugins(root); });
       server.middlewares.use(`${server.config.base}plugin-management`, (req, res) => { void managePackages(root, req, res); });

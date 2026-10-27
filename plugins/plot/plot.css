@@ -1,0 +1,107 @@
+.plot-panel {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.plot-toolbar {
+  flex: none;
+}
+
+.plot-content {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.plot-body {
+  flex: 1 1 0;
+  min-height: 0;
+  padding: 2px;
+  position: relative;
+  overflow: hidden;
+}
+
+.series-list {
+  flex: none;
+  max-height: 88px;
+  overflow-y: auto;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.series-row {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) 92px 24px 24px;
+  align-items: center;
+  gap: 6px;
+  min-height: 27px;
+  padding: 2px 8px;
+  font-family: var(--mono);
+  font-size: var(--fs-meta);
+  color: var(--text-muted);
+}
+
+.series-row + .series-row {
+  border-top: 1px solid var(--border-soft);
+}
+
+.series-row.muted {
+  opacity: 0.5;
+}
+
+.series-row i {
+  width: 8px;
+  height: 2px;
+}
+
+.series-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.series-value {
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.series-value.waiting,
+.series-value.invalid {
+  color: var(--text-faint);
+}
+
+.series-value.invalid {
+  color: var(--status-error);
+}
+
+.series-row button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--text-faint);
+  cursor: pointer;
+}
+
+.series-row button:hover {
+  color: var(--foreground);
+}
+
+.uplot,
+.u-legend {
+  font-family: var(--mono) !important;
+  font-size: var(--fs-meta) !important;
+  color: var(--text-muted) !important;
+}
