@@ -1,6 +1,8 @@
 # 通用后端与离线协议检查
 
 基础 3D 不需要这些服务。按功能显式启动，不启动机器人控制进程。
+各服务读取项目根目录的 `setting.yaml`。
+集中配置、私网权限和显式 `npm run stack` 启动说明见 [10-project-settings.md](10-project-settings.md)。
 
 ## 文件与图像配置服务
 
@@ -11,10 +13,10 @@ PYTHONPATH=ros2/robviz_web_server /usr/bin/python3 -m robviz_web_server.web_serv
   --allowed-host localhost:4173 --allowed-host 127.0.0.1:4173
 ```
 
-Vite API 代理保留浏览器 Host，服务只接受明确配置的 Host 与同源 Origin。
-默认禁止非回环写操作。远程编辑使用 SSH 转发。
-只有明确需要远程写入时才设置 `--allow-remote-writes` 和精确 `--allowed-host`。
-不要把局域网地址等同于写入授权。
+Vite API 代理保留浏览器 Host，代理入口校验实际私网来源与 Origin。
+文件服务默认仅监听回环地址，通过网页代理允许私网读写。
+`services.files.allow_lan_writes` 可单独关闭私网写入。
+直接开放文件服务需要明确修改其监听地址，仍拒绝公网来源和非法 Origin。
 
 在 data-dir 中放入需要编辑的 YAML，文件名使用字母、数字、下划线或连字符。
 服务只编辑现存文件，不通过 API 创建任意路径。
@@ -59,9 +61,10 @@ ros2 run robviz_video_gateway gateway_node --ros-args \
   -p 'allowed_origins:=[http://localhost:5173,http://127.0.0.1:5173]'
 ```
 
-Origin 必须与 Host 同源或在精确配置列表内。截图默认只允许回环连接。
-远程截图需要显式设置 `allow_remote_capture:=true`，并配置实际 Host/Origin。
-不根据局域网地址推断授权。
+Origin 必须同源、属于同一主机的配置页面端口，或在精确配置列表内。
+截图默认允许私网请求，由网关机器保存。
+`services.video.allow_lan_capture` 可单独关闭私网截图。
+公网来源即使设置 `allow_remote_capture:=true` 也不会获得截图权限。
 
 WebSocket `/ws` 协议版本为 1，保留 watch/unwatch/setFps/answer/ice/telemetry。
 新增 getMeta/getCaptureInfo/setCaptureTopic/unwatchCapture/captureFrame。

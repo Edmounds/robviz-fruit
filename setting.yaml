@@ -1,0 +1,42 @@
+# Project runtime settings. Browser workspaces and SSH credentials are not stored here.
+# Relative paths resolve from this file's directory.
+# Precedence: explicit startup arguments > ROBVIZ_* environment > this file.
+version: 1
+network:
+  allow_lan: true
+  allowed_hosts: []
+  allowed_origins: []
+web:
+  host: 0.0.0.0
+  port: 5173
+  preview_port: 4173
+plugins:
+  directory: plugins
+  allow_lan_writes: true
+  repository: Edmounds/robviz-plugins
+  ref: ""
+  release: ""
+services:
+  files:
+    enabled: true
+    host: 127.0.0.1
+    port: 8000
+    data_dir: data/waypoints
+    allow_lan_writes: true
+  video:
+    enabled: true
+    host: 0.0.0.0
+    port: 8787
+    capture_topic: ""
+    capture_output_dir: data/captures
+    allow_lan_capture: true
+    prefer_hardware: false
+    default_target_fps: 10
+    min_bitrate_kbps: 150
+    start_bitrate_kbps: 1000
+    max_bitrate_kbps: 1000
+  terminal:
+    enabled: true
+    host: 0.0.0.0
+    port: 8767
+    allow_lan: true

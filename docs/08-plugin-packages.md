@@ -132,8 +132,11 @@ npm run preview -- --host 127.0.0.1
 禁用或卸载后保留配置和占位面板，不清空 Dockview 排列。
 初次迁移在 localStorage 的 `robviz.layout.v3.before-plugin-split` 保留原配置副本。
 
-管理写操作只接受回环连接、回环 Host 和匹配的 Origin。
-远程访问管理功能请使用 SSH 转发，不能通过允许任意 CORS 开放写操作。
+管理写操作默认接受回环或私网来源，并校验 Host 与 Origin。
+`setting.yaml` 的 `network.allow_lan` 与 `plugins.allow_lan_writes` 控制私网写入。
+公网来源仍被拒绝，不通过任意 CORS 开放写操作。
+关闭私网写入后，使用本机页面或 SSH 转发操作。
+集中配置和一键启动见 [10-project-settings.md](10-project-settings.md)。
 纯静态站点显示只读安装提示，继续支持手动复制与 CLI 扫描。
 
 下载通过服务器的 `gh api --hostname github.com` 完成，需要可用的 gh 认证。

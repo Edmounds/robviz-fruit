@@ -2,14 +2,17 @@ import { createReadStream } from "node:fs";
 import { lstat, mkdir, mkdtemp, open, readFile, readdir, rename, rm } from "node:fs/promises";
 import { createHash, randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
-import { isIP } from "node:net";
 import { resolve, join, extname } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Plugin } from "vite";
 import { DEFAULT_PLUGIN_IDS, packagePathSchema, pluginIdSchema, pluginManifestSchema, type PluginManifest } from "../src/plugins/manifest.ts";
 import { z } from "zod";
+import { allowedRequest, isLoopback } from "./network-policy.ts";
+import { effectiveSettings, settingsPath } from "./project-settings.ts";
+import { withPluginLock } from "./file-lock.ts";
+export { withPluginLock } from "./file-lock.ts";
 
-export const DEFAULT_PLUGIN_DIRECTORY = resolve(process.env.ROBVIZ_PLUGIN_DIR || "plugins");
+export const DEFAULT_PLUGIN_DIRECTORY = settingsPath(effectiveSettings().plugins.directory);
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
 const MAX_PACKAGE_BYTES = 50 * 1024 * 1024;
 
@@ -62,12 +65,13 @@ async function github(endpoint: string, maximum: number, binary = false): Promis
 }
 
 async function source() {
-  const repo = process.env.ROBVIZ_PLUGIN_REPO || "Edmounds/robviz-plugins";
+  const config = effectiveSettings().plugins;
+  const repo = config.repository;
   if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo)) {
     throw new Error("Invalid ROBVIZ_PLUGIN_REPO configured on the server");
   }
 
-  let revision = process.env.ROBVIZ_PLUGIN_REF || "";
+  let revision = config.ref;
   if (!revision) {
     const commit = JSON.parse((await github(`repos/${repo}/commits/main`, 1024 * 1024)).toString());
     if (typeof commit?.sha !== "string" || !/^[a-f0-9]{40}$/.test(commit.sha)) {
@@ -77,7 +81,7 @@ async function source() {
   } else if (!/^[a-f0-9]{40}$/.test(revision)) {
     throw new Error("Configure ROBVIZ_PLUGIN_REF (full commit SHA) on the server");
   }
-  const release = process.env.ROBVIZ_PLUGIN_RELEASE;
+  const release = config.release;
   if (release) {
     if (!/^[A-Za-z0-9_.-]{1,80}$/.test(release)) throw new Error("Invalid configured release tag");
     const commit = JSON.parse((await github(`repos/${repo}/commits/${release}`, 1024 * 1024)).toString());
@@ -119,25 +123,6 @@ async function source() {
   const bytes = await read("catalog.json");
   if (bytes.length > 1024 * 1024) throw new Error("Catalog is too large");
   return { catalog: catalogSchema.parse(JSON.parse(bytes.toString())), read, repo, revision };
-}
-
-/** The OS releases this advisory lock even after process termination. */
-export async function withPluginLock<T>(root: string, action: () => Promise<T>): Promise<T> {
-  await mkdir(root, { recursive: true });
-  const base = await lstat(root);
-  if (!base.isDirectory() || base.isSymbolicLink()) throw new Error("Invalid plugin directory");
-  const lock = join(root, ".write-lock");
-  const info = await lstat(lock).catch((error: NodeJS.ErrnoException) => { if (error.code !== "ENOENT") throw error; });
-  if (info?.isSymbolicLink()) throw new Error("Invalid lock file");
-  const child = spawn("flock", ["-n", lock, process.execPath, "-e", 'process.stdout.write("locked");process.stdin.resume();'], { stdio: ["pipe", "pipe", "ignore"] });
-  const exited = new Promise<void>((accept) => child.once("exit", () => accept()));
-  await new Promise<void>((accept, reject) => {
-    child.once("error", () => reject(new Error("flock is required for plugin management")));
-    child.once("exit", () => reject(new Error("Plugin directory is locked")));
-    child.stdout.once("data", () => accept());
-  });
-  try { return await action(); }
-  finally { child.stdin.end(); await exited; }
 }
 
 async function exists(path: string) {
@@ -217,45 +202,9 @@ export async function installCatalogPlugin(root: string, catalogValue: unknown, 
   } finally { await rm(stage, { recursive: true, force: true }); }
 }
 
-function isLanOrLoopback(hostname: string): boolean {
-  if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1" || hostname.endsWith(".local")) return true;
-  const ipType = isIP(hostname);
-  if (ipType === 4) {
-    const parts = hostname.split(".").map(Number);
-    return parts[0] === 10 || (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) || (parts[0] === 192 && parts[1] === 168) || (parts[0] === 169 && parts[1] === 254) || parts[0] === 127;
-  }
-  if (ipType === 6) {
-    const lower = hostname.toLowerCase();
-    return lower === "::1" || lower.startsWith("fe80:") || lower.startsWith("fc") || lower.startsWith("fd");
-  }
-  return false;
-}
-
 export function isLocalManagementRequest(req: IncomingMessage, write = false): boolean {
-  const address = req.socket.remoteAddress || "";
-  const cleanAddress = address.replace(/^::ffff:/, "");
-  const isLoopback = cleanAddress === "127.0.0.1" || cleanAddress === "::1";
-  if (write && !isLoopback && process.env.ROBVIZ_ALLOW_REMOTE_PLUGIN_MGMT !== "1") return false;
-
-  const host = req.headers.host || "";
-  let hostname = "";
-  try {
-    hostname = new URL(`http://${host}`).hostname.replace(/^\[|\]$/g, "");
-  } catch {
-    return false;
-  }
-  if (!isLanOrLoopback(hostname)) return false;
-
-  const origin = req.headers.origin;
-  if (!origin) return true;
-  try {
-    const parsed = new URL(origin);
-    if (!["http:", "https:"].includes(parsed.protocol)) return false;
-    const originHost = parsed.hostname.replace(/^\[|\]$/g, "");
-    return isLanOrLoopback(originHost) || parsed.host === host;
-  } catch {
-    return false;
-  }
+  const settings = effectiveSettings();
+  return allowedRequest(req, settings.network.allow_lan && (!write || settings.plugins.allow_lan_writes), undefined, settings.network.allowed_hosts, settings.network.allowed_origins);
 }
 
 async function managePackages(root: string, req: IncomingMessage, res: ServerResponse) {
@@ -266,12 +215,11 @@ async function managePackages(root: string, req: IncomingMessage, res: ServerRes
   try {
     const isWrite = req.method !== "GET" && req.method !== "HEAD";
     if (!isLocalManagementRequest(req, isWrite)) {
-      return send(403, { error: "Plugin management is local or private network only. Writes require local access or SSH tunnel." });
+      return send(403, { error: "Plugin management requires an allowed private-network peer and same Origin. Check setting.yaml." });
     }
     const path = new URL(req.url || "/", "http://localhost").pathname;
-    const address = (req.socket.remoteAddress || "").replace(/^::ffff:/, "");
-    const isLoopback = address === "127.0.0.1" || address === "::1";
-    const writable = isLoopback || process.env.ROBVIZ_ALLOW_REMOTE_PLUGIN_MGMT === "1";
+    const settings = effectiveSettings();
+    const writable = isLoopback(req.socket.remoteAddress || "") || (settings.network.allow_lan && settings.plugins.allow_lan_writes);
     if (req.method === "GET" && path === "/") {
       return send(200, { directory: root, host: req.headers.host, writable, ...(await scanPlugins(root)) });
     }

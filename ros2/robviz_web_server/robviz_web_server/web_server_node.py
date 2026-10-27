@@ -1,10 +1,10 @@
 """Same-origin waypoint, background and image settings HTTP service."""
 
 import argparse
-import ipaddress
 import json
 import logging
 import mimetypes
+import socket
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
@@ -12,6 +12,7 @@ import uuid
 import yaml
 
 from .image_settings import ImageSettingsStore
+from .project_settings import allowed_request, load_project_settings
 from .storage import (
     VersionConflict, atomic_write, document_lock, file_id, finite_number,
     load_waypoint_document, read_bytes, safe_rel_path, save_waypoint_document,
@@ -38,19 +39,6 @@ def validate_background(payload):
     return result
 
 
-def is_lan_or_loopback(host_str: str) -> bool:
-    if not host_str:
-        return False
-    host_only = host_str.split(":")[0].strip().strip("[]")
-    if host_only in ("localhost", "127.0.0.1", "::1") or host_only.endswith(".local"):
-        return True
-    try:
-        ip = ipaddress.ip_address(host_only)
-        return ip.is_private or ip.is_loopback or ip.is_link_local
-    except ValueError:
-        return False
-
-
 class RequestError(ValueError):
     def __init__(self, status, message):
         super().__init__(message)
@@ -74,20 +62,12 @@ class RobvizHttpHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _check_request(self, write=False):
-        hosts = self.server.allowed_hosts
         host = self.headers.get("Host", "")
-        if "*" not in hosts and host not in hosts and not is_lan_or_loopback(host):
-            raise RequestError(403, "Host is not configured")
         origin = self.headers.get("Origin")
-        if origin:
-            parsed = urlparse(origin)
-            if parsed.scheme not in ("http", "https") or origin != f"{parsed.scheme}://{parsed.netloc}":
-                raise RequestError(403, "Origin does not match Host")
-            if parsed.netloc != host and not is_lan_or_loopback(parsed.netloc) and origin not in self.server.allowed_origins:
-                raise RequestError(403, "Origin does not match Host or LAN policy")
-        client_ip = self.client_address[0]
-        if write and not is_lan_or_loopback(client_ip) and not self.server.allow_remote_writes:
-            raise RequestError(403, "Remote writes are disabled. Use an SSH tunnel.")
+        allow_lan = self.server.allow_lan and (not write or self.server.allow_remote_writes)
+        if not allowed_request(self.client_address[0], host, origin, allow_lan,
+                               allowed_hosts=self.server.allowed_hosts, allowed_origins=self.server.allowed_origins):
+            raise RequestError(403, "Private-network peer and allowed same Origin required")
 
     def _body(self, maximum=4 * 1024 * 1024, binary=False):
         if self.headers.get("Transfer-Encoding"):
@@ -225,17 +205,23 @@ class RobvizHttpHandler(BaseHTTPRequestHandler):
         logger.info(message, *args)
 
 
-def create_server(host, port, data_dir, web_dir=None, allowed_hosts=(), allowed_origins=(), allow_remote_writes=False):
+class IPv6HttpServer(ThreadingHTTPServer):
+    address_family = socket.AF_INET6
+
+
+def create_server(host, port, data_dir, web_dir=None, allowed_hosts=(), allowed_origins=(), allow_remote_writes=False, allow_lan=False):
     data_dir = Path(data_dir).absolute()
     safe_rel_path(data_dir.parent, data_dir.name)
     data_dir.mkdir(parents=True, exist_ok=True)
     background_dir = safe_rel_path(data_dir, "backgrounds")
     background_dir.mkdir(exist_ok=True)
-    server = ThreadingHTTPServer((host, port), RobvizHttpHandler)
+    server_class = IPv6HttpServer if ":" in host else ThreadingHTTPServer
+    server = server_class((host, port), RobvizHttpHandler)
     server.data_dir = data_dir
     server.background_dir = background_dir
     server.web_dir = Path(web_dir).absolute() if web_dir else None
     server.allow_remote_writes = allow_remote_writes
+    server.allow_lan = allow_lan
     server.allowed_origins = set(allowed_origins)
     server.allowed_hosts = set(allowed_hosts) | {
         f"127.0.0.1:{server.server_port}", f"localhost:{server.server_port}"}
@@ -244,17 +230,23 @@ def create_server(host, port, data_dir, web_dir=None, allowed_hosts=(), allowed_
 
 
 def main():
+    config_parser = argparse.ArgumentParser(add_help=False)
+    config_parser.add_argument("--config")
+    config_args, _ = config_parser.parse_known_args()
+    settings = load_project_settings(config_args.config)
+    defaults = settings["services"]["files"]
     parser = argparse.ArgumentParser(description="RobViz file and settings service")
-    parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=8000)
-    parser.add_argument("--data-dir", default="./data/waypoints")
+    parser.add_argument("--config")
+    parser.add_argument("--host", default=defaults["host"] if settings["network"]["allow_lan"] else "127.0.0.1")
+    parser.add_argument("--port", type=int, default=defaults["port"])
+    parser.add_argument("--data-dir", default=defaults["data_dir"])
     parser.add_argument("--web-dir")
-    parser.add_argument("--allowed-host", action="append", default=[], help="Exact Host including port, including a reverse proxy Host")
-    parser.add_argument("--allowed-origin", action="append", default=[], help="Explicit allowed Origin")
-    parser.add_argument("--allow-remote-writes", action="store_true")
+    parser.add_argument("--allowed-host", action="append", default=settings["network"]["allowed_hosts"], help="Exact Host including port, including a reverse proxy Host")
+    parser.add_argument("--allowed-origin", action="append", default=settings["network"]["allowed_origins"], help="Explicit allowed Origin")
+    parser.add_argument("--allow-remote-writes", action=argparse.BooleanOptionalAction, default=defaults["allow_lan_writes"])
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO)
-    server = create_server(args.host, args.port, args.data_dir, args.web_dir, args.allowed_host, args.allowed_origin, args.allow_remote_writes)
+    server = create_server(args.host, args.port, args.data_dir, args.web_dir, args.allowed_host, args.allowed_origin, args.allow_remote_writes, settings["network"]["allow_lan"])
     logger.info("Listening on %s:%d", args.host, server.server_port)
     try:
         server.serve_forever()

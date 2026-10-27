@@ -11,6 +11,10 @@ node_modules
 dist
 dist-ssr
 *.local
+/data/
+/setting.yaml.*.bak
+/setting.yaml.*.tmp
+/.write-lock
 
 # Editor directories and files
 .vscode/*

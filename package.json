@@ -12,6 +12,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "stack": "tsx scripts/start-stack.ts",
     "ui:preview": "vite --config vite.ui.config.ts --open /ui.html",
     "build": "tsc -b && npm run plugins:build && vite build",
     "sdk:build": "tsc -p tsconfig.sdk.json",
@@ -51,7 +52,8 @@
     "uplot": "^1.6.32",
     "vite": "^8.2.0",
     "vitest": "^4.1.10",
-    "ws": "^8.21.3"
+    "ws": "^8.21.3",
+    "yaml": "^2.9.1"
   },
   "allowScripts": {
     "node-pty@1.1.0": true

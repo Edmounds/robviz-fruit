@@ -2,7 +2,7 @@ import { createRoot } from "react-dom/client";
 
 import App from "./app/App";
 import { ErrorBoundary } from "./app/ErrorBoundary";
-import { APP_CONFIG_STORAGE_KEY, parseAppConfig } from "./core/appConfig";
+import { APP_CONFIG_STORAGE_KEY, configureRuntimeServices, parseAppConfig } from "./core/appConfig";
 import { loadInstalledPlugins } from "./plugins/loader";
 import { registerInstalledPlugins } from "./plugins/registry";
 import "./app/app.css";
@@ -14,6 +14,10 @@ const root = createRoot(document.getElementById("root")!);
 root.render(<p role="status" className="rv-empty">正在加载插件 / Loading plugins…</p>);
 
 async function start() {
+  try {
+    const response = await fetch(new URL("./project-settings/runtime", document.baseURI), { signal: AbortSignal.timeout(3000) });
+    if (response.ok) configureRuntimeServices(await response.json());
+  } catch { /* Static deployments retain standalone service defaults and saved overrides. */ }
   let disabled: string[] = [];
   try {
     const stored = localStorage.getItem(APP_CONFIG_STORAGE_KEY);

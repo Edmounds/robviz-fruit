@@ -19,5 +19,5 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["vite.config.ts", "vite.ui.config.ts", "terminal/**/*.ts", "scripts/build-default-plugins.ts"]
+  "include": ["vite.config.ts", "vite.ui.config.ts", "terminal/**/*.ts", "scripts/build-default-plugins.ts", "scripts/start-stack.ts"]
 }

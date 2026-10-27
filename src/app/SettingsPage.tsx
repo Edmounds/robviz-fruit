@@ -8,6 +8,7 @@ import { useI18n } from "./i18n";
 import { NumberInput } from "./EditableInput";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { PluginPackages } from "./PluginPackages";
+import { ProjectSettings } from "./ProjectSettings";
 
 type Settings = LayoutConfig["settings"];
 export type SettingsTab = string;
@@ -107,6 +108,7 @@ export function SettingsPage({ tab, settings, session, networkServices, onSessio
     <div className="settings-content">
       <h1>{extension?.label ?? (tab === "general" ? t("general") : tab === "3d" ? t("threeD") : tab === "network" ? t("networkSettings") : t("plugins"))}</h1>
       {tab === "general" && <>
+        <ProjectSettings />
         <section className="settings-section">
           <h2>{t("language")}</h2>
           <label className="settings-row"><span>{t("language")}</span>

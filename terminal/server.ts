@@ -5,6 +5,8 @@ import { pathToFileURL } from "node:url";
 
 import * as nodePty from "node-pty";
 import { WebSocket, WebSocketServer } from "ws";
+import { allowedRequest } from "../scripts/network-policy.ts";
+import { effectiveSettings, listenHost } from "../scripts/project-settings.ts";
 
 import {
   parseTerminalTarget,
@@ -40,25 +42,17 @@ export type SpawnPty = (
 
 export interface TerminalGatewayOptions {
   port?: number;
+  host?: string;
+  allowLan?: boolean;
+  pagePorts?: number[];
+  allowedHosts?: string[];
+  allowedOrigins?: string[];
   spawnPty?: SpawnPty;
 }
 
 export interface TerminalGatewayHandle {
   url: string;
   close(): Promise<void>;
-}
-
-function isAllowedOrigin(origin: string | undefined): boolean {
-  if (!origin) return true;
-  try {
-    const parsed = new URL(origin);
-    return (
-      (parsed.protocol === "http:" || parsed.protocol === "https:") &&
-      ["localhost", "127.0.0.1", "::1", "[::1]"].includes(parsed.hostname)
-    );
-  } catch {
-    return false;
-  }
 }
 
 function processEnvironment(): Record<string, string> {
@@ -108,15 +102,15 @@ export async function startTerminalGateway(
   if (!options.spawnPty) ensurePtyHelperExecutable();
   const spawnPty = options.spawnPty ?? spawnSsh;
   const wss = new WebSocketServer({
-    host: HOST,
+    host: options.host ?? HOST,
     port: options.port ?? DEFAULT_PORT,
     maxPayload: MAX_PAYLOAD_BYTES,
   });
   let activeSessions = 0;
 
   wss.on("connection", (ws, request) => {
-    if (!isAllowedOrigin(request.headers.origin)) {
-      send(ws, { type: "error", code: "ORIGIN_NOT_ALLOWED", message: "终端网关只接受本机页面" });
+    if (!allowedRequest(request, options.allowLan ?? false, options.pagePorts ?? [5173, 4173], options.allowedHosts, options.allowedOrigins)) {
+      send(ws, { type: "error", code: "ORIGIN_NOT_ALLOWED", message: "终端网关拒绝此来源，请检查 setting.yaml" });
       ws.close(1008, "origin not allowed");
       return;
     }
@@ -235,7 +229,7 @@ export async function startTerminalGateway(
   if (!address || typeof address === "string") throw new Error("Terminal gateway did not bind TCP");
 
   return {
-    url: `ws://${HOST}:${address.port}`,
+    url: `ws://${(options.host ?? HOST).includes(":") ? `[${options.host ?? HOST}]` : (options.host ?? HOST)}:${address.port}`,
     close: async () => {
       for (const client of wss.clients) client.terminate();
       await new Promise<void>((resolve, reject) => {
@@ -246,7 +240,14 @@ export async function startTerminalGateway(
 }
 
 async function main(): Promise<void> {
-  const gateway = await startTerminalGateway({});
+  const settings = effectiveSettings();
+  const config = settings.services.terminal;
+  const gateway = await startTerminalGateway({
+    port: config.port, host: listenHost(settings, config.host, config.allow_lan),
+    allowLan: settings.network.allow_lan && config.allow_lan,
+    pagePorts: [settings.web.port, settings.web.preview_port],
+    allowedHosts: settings.network.allowed_hosts, allowedOrigins: settings.network.allowed_origins,
+  });
   console.log(`RobViz terminal gateway listening on ${gateway.url}`);
 
   const stop = async (): Promise<void> => {

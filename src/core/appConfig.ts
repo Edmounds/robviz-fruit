@@ -155,6 +155,27 @@ export const CORE_NETWORK_SERVICES: PluginServiceDefinition[] = [
   },
 ];
 
+let runtimeTerminalLan: boolean | undefined;
+let runtimeTerminalHost: string | undefined;
+let runtimeFileProxy = false;
+
+/** Apply server-advertised ports without changing saved machine overrides. */
+export function configureRuntimeServices(value: unknown): void {
+  const parsed = z.object({
+    terminal: z.object({ host: z.string().regex(/^[a-zA-Z0-9.:-]+$/).optional(), port: z.number().int().min(1).max(65535), allow_lan: z.boolean() }),
+    video: z.object({ port: z.number().int().min(1).max(65535) }),
+    files: z.object({ port: z.number().int().min(1).max(65535), proxy: z.boolean() }),
+  }).parse(value);
+  for (const service of CORE_NETWORK_SERVICES) {
+    if (service.id === "terminal") service.defaultPort = parsed.terminal.port;
+    if (service.id === "video") service.defaultPort = parsed.video.port;
+    if (service.id === "web") service.defaultPort = parsed.files.port;
+  }
+  runtimeTerminalLan = parsed.terminal.allow_lan;
+  runtimeTerminalHost = parsed.terminal.host;
+  runtimeFileProxy = parsed.files.proxy;
+}
+
 export function resolveBaseHost(sessionUrl: string): string {
   try {
     const raw = sessionUrl.trim();
@@ -176,8 +197,13 @@ export function resolveServiceUrl(
   if (override?.url && override.url.trim()) {
     return override.url.trim();
   }
+  if (service.id === "web" && runtimeFileProxy && !override?.host && override?.port === undefined && typeof window !== "undefined") {
+    return window.location.origin;
+  }
 
-  const baseHost = resolveBaseHost(session.url);
+  const baseHost = service.id === "terminal" && runtimeTerminalLan !== undefined && typeof window !== "undefined"
+    ? (runtimeTerminalHost && !["0.0.0.0", "::"].includes(runtimeTerminalHost) ? runtimeTerminalHost : runtimeTerminalLan ? window.location.hostname : "127.0.0.1")
+    : resolveBaseHost(session.url);
   const host = (override?.host && override.host.trim()) ? override.host.trim() : baseHost;
   const formattedHost = host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
   const port = override?.port ?? service.defaultPort;
@@ -198,6 +224,7 @@ export function resolveServiceUrl(
 }
 
 export function getDefaultMediaUrl(foxgloveUrl: string): string {
+  const port = CORE_NETWORK_SERVICES.find((service) => service.id === "video")!.defaultPort;
   try {
     const parsed = new URL(foxgloveUrl);
     const pageHost = typeof window !== "undefined" && window.location
@@ -208,12 +235,12 @@ export function getDefaultMediaUrl(foxgloveUrl: string): string {
       ? pageHost
       : parsed.hostname;
     const proto = parsed.protocol === "wss:" ? "wss:" : "ws:";
-    return `${proto}//${host}:8787/ws`;
+    return `${proto}//${host}:${port}/ws`;
   } catch {
     const pageHost = typeof window !== "undefined" && window.location
       ? window.location.hostname
       : "localhost";
-    return `ws://${pageHost || "localhost"}:8787/ws`;
+    return `ws://${pageHost || "localhost"}:${port}/ws`;
   }
 }
 

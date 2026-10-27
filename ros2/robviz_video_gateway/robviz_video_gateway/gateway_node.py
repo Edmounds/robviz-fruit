@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 # flake8: noqa: E501
 import asyncio
-import ipaddress
 import json
 import logging
 import math
@@ -9,14 +8,15 @@ from pathlib import Path
 import re
 import threading
 import time
-from urllib.parse import urlparse
 from typing import Dict, Set
 
 # Step 1: Initialize ROS 2 BEFORE GStreamer to prevent FastDDS / libcrypto symbol conflicts
 import rclpy
 from rclpy.node import Node
+from rclpy.executors import ExternalShutdownException
 from std_srvs.srv import Trigger
 from robviz_web_server.image_settings import load_image_settings
+from robviz_web_server.project_settings import allowed_request, load_project_settings
 from .video_frames import save_raw_png, validate_and_extract_color
 
 # Step 2: GStreamer imports (Gst.init called in main after rclpy.init)
@@ -36,37 +36,24 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(na
 logger = logging.getLogger('RobvizVideoGateway')
 
 
-def is_lan_or_loopback(host_str: str) -> bool:
-    if not host_str:
-        return False
-    host_only = host_str.split(':')[0].strip().strip('[]')
-    if host_only in ('localhost', '127.0.0.1', '::1') or host_only.endswith('.local'):
-        return True
-    try:
-        ip = ipaddress.ip_address(host_only)
-        return ip.is_private or ip.is_loopback or ip.is_link_local
-    except ValueError:
-        return False
-
-
 class GatewayNode(Node):
     def __init__(self):
         super().__init__('robviz_video_gateway')
-        self.declare_parameter('host', '0.0.0.0')
-        self.declare_parameter('port', 8787)
-        self.declare_parameter('default_target_fps', 10.0)
-        self.declare_parameter('min_bitrate_kbps', 150)
-        self.declare_parameter('start_bitrate_kbps', 1000)
-        self.declare_parameter('max_bitrate_kbps', 1000)
-        self.declare_parameter('prefer_hardware', True)
-        self.declare_parameter('settings_file', '')
-        self.declare_parameter('capture_topic', '')
-        self.declare_parameter('capture_output_dir', './data/captures')
-        self.declare_parameter('allow_remote_capture', False)
-        self.declare_parameter('allowed_hosts', ['localhost:8787', '127.0.0.1:8787'])
-        self.declare_parameter('allowed_origins', ['http://localhost:5173', 'http://127.0.0.1:5173'])
+        self.project_settings = load_project_settings()
+        defaults = self.project_settings['services']['video']
+        self.allow_lan = self.project_settings['network']['allow_lan']
+        for key in ('host', 'port', 'min_bitrate_kbps', 'start_bitrate_kbps', 'max_bitrate_kbps',
+                    'prefer_hardware', 'capture_topic', 'capture_output_dir'):
+            self.declare_parameter(key, defaults[key])
+        self.declare_parameter('default_target_fps', float(defaults['default_target_fps']))
+        self.declare_parameter('settings_file', str(Path(self.project_settings['services']['files']['data_dir']) / 'image-settings.json'))
+        self.declare_parameter('allow_remote_capture', defaults['allow_lan_capture'])
+        network = self.project_settings['network']
+        self.declare_parameter('allowed_hosts', network['allowed_hosts'] or ['localhost', '127.0.0.1'])
+        page_port = self.project_settings['web']['port']
+        self.declare_parameter('allowed_origins', network['allowed_origins'] or [f'http://localhost:{page_port}', f'http://127.0.0.1:{page_port}'])
 
-        self.host = self.get_parameter('host').get_parameter_value().string_value
+        self.host = self.get_parameter('host').get_parameter_value().string_value if self.allow_lan else '127.0.0.1'
         self.port = self.get_parameter('port').get_parameter_value().integer_value
         self.config = {
             'default_target_fps': (
@@ -163,17 +150,11 @@ class GatewayServer:
         return {'type': 'meta', 'streams': streams, 'protocolVersion': 1}
 
     def check_origin(self, request):
-        allowed_hosts = self.ros_node.get_parameter('allowed_hosts').value
-        if '*' not in allowed_hosts and request.host not in allowed_hosts and not is_lan_or_loopback(request.host):
-            return False
-        origin = request.headers.get('Origin')
-        if not origin:
-            return True  # Non-browser diagnostics. Capture still requires an Origin.
-        parsed = urlparse(origin)
-        if parsed.scheme not in ('http', 'https') or origin != f'{parsed.scheme}://{parsed.netloc}':
-            return False
-        return (parsed.netloc == request.host or is_lan_or_loopback(parsed.netloc) or
-                origin in self.ros_node.get_parameter('allowed_origins').value)
+        web_config = self.ros_node.project_settings['web']
+        return allowed_request(request.remote or '', request.host, request.headers.get('Origin'),
+                               self.ros_node.allow_lan, (web_config['port'], web_config['preview_port']),
+                               self.ros_node.get_parameter('allowed_hosts').value,
+                               self.ros_node.get_parameter('allowed_origins').value)
 
     async def capture_command(self, data, ws_id, request, selected):
         kind, req_id = data.get('type'), data.get('requestId')
@@ -209,7 +190,11 @@ class GatewayServer:
                         'width': int(frame.width) if fresh else 0, 'height': int(frame.height) if fresh else 0}, selected
             if not request.headers.get('Origin') or not self.check_origin(request):
                 raise PermissionError('Capture write requires an allowed Origin')
-            if not is_lan_or_loopback(request.remote or '') and not self.ros_node.get_parameter('allow_remote_capture').value:
+            if not allowed_request(request.remote or '', request.host, request.headers.get('Origin'),
+                                   self.ros_node.allow_lan and self.ros_node.get_parameter('allow_remote_capture').value,
+                                   (self.ros_node.project_settings['web']['port'], self.ros_node.project_settings['web']['preview_port']),
+                                   self.ros_node.get_parameter('allowed_hosts').value,
+                                   self.ros_node.get_parameter('allowed_origins').value):
                 raise PermissionError('Remote capture writes are disabled. Use an SSH tunnel.')
             if not fresh:
                 raise ValueError('No fresh supported color frame')
@@ -248,6 +233,8 @@ class GatewayServer:
         return max(1.0, min(60.0, fps)) if math.isfinite(fps) else default
 
     async def handle_index(self, request):
+        if not self.check_origin(request):
+            return web.Response(status=403, text='Forbidden peer, Host or Origin')
         html = """<!DOCTYPE html>
 <html>
 <head>
@@ -546,7 +533,12 @@ def main(args=None):
     )
 
     # Run ROS spin in background daemon thread
-    ros_thread = threading.Thread(target=rclpy.spin, args=(ros_node,), daemon=True)
+    def spin():
+        try:
+            rclpy.spin(ros_node)
+        except ExternalShutdownException:
+            pass
+    ros_thread = threading.Thread(target=spin, daemon=True)
     ros_thread.start()
 
     loop = asyncio.new_event_loop()
@@ -571,8 +563,12 @@ def main(args=None):
             streamer.capture_viewers.clear()
             streamer.stop_streaming()
             streamer.release_subscription()
+        server.glib_loop.quit()
+        server.glib_thread.join(timeout=1)
+        if rclpy.ok():
+            rclpy.shutdown()
+        ros_thread.join(timeout=1)
         ros_node.destroy_node()
-        rclpy.shutdown()
 
 
 if __name__ == '__main__':

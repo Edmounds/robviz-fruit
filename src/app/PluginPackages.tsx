@@ -25,7 +25,7 @@ export function PluginPackages() {
   useEffect(() => {
     let cancelled = false;
     void request().then((value) => { if (!cancelled) setInstalled(value); }).catch(() => {
-      if (!cancelled) setError("只读安装模式。复制插件并运行 npm run plugins:scan，然后刷新。管理写操作仅限本机或 SSH 转发。");
+      if (!cancelled) setError("插件管理不可用。检查 setting.yaml 的局域网权限；静态部署可复制插件并运行 npm run plugins:scan。");
     });
     return () => { cancelled = true; };
   }, []);
@@ -49,7 +49,7 @@ export function PluginPackages() {
     <h2>插件安装 / Plugin packages</h2>
     {installed && <p><code>{installed.host}</code> · <code>{installed.directory}</code></p>}
     <Toolbar>
-      <Button disabled={busy || !installed} onClick={() => void action("scan")}>重新扫描</Button>
+      <Button disabled={busy || !installed?.writable} onClick={() => void action("scan")}>重新扫描</Button>
       <Button disabled={busy || !installed} onClick={() => void action("catalog")}>读取官方清单</Button>
       {changed && <Button onClick={() => { if (window.confirm("确认已保存编辑内容，然后刷新加载插件？")) window.location.reload(); }}>刷新生效</Button>}
     </Toolbar>
@@ -58,13 +58,13 @@ export function PluginPackages() {
     {installed?.plugins.map((plugin) => <div className="settings-row" key={plugin.id}>
       <span>{plugin.name} <code>{plugin.id}@{plugin.version}</code></span>
       {DEFAULT_PLUGIN_IDS.includes(plugin.id) ? null :
-        <Button disabled={busy} onClick={() => void action("uninstall", plugin.id)}>卸载</Button>}
+        <Button disabled={busy || !installed?.writable} onClick={() => void action("uninstall", plugin.id)}>卸载</Button>}
     </div>)}
     {catalog && <>
       <p><code>{catalog.repo}@{catalog.revision}</code></p>
       {catalog.catalog.plugins.map((plugin) => <div className="settings-row" key={plugin.id}>
         <span><code>{plugin.id}@{plugin.version}</code></span>
-        <Button disabled={busy || DEFAULT_PLUGIN_IDS.includes(plugin.id)} onClick={() => void action("install", plugin.id)}>安装 / 升级</Button>
+        <Button disabled={busy || !installed?.writable || DEFAULT_PLUGIN_IDS.includes(plugin.id)} onClick={() => void action("install", plugin.id)}>安装 / 升级</Button>
       </div>)}
     </>}
   </section>;
