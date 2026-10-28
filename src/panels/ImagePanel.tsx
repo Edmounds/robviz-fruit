@@ -225,12 +225,12 @@ export function ImagePanel({
 
   const displayMeta = webrtcStats
     ? (webrtcStats.status === "streaming" || webrtcStats.status === "congested"
-        ? `H.264 ${webrtcStats.width}×${webrtcStats.height} · ${webrtcStats.actualFps} FPS (${targetFps}) · ${webrtcStats.bitrateKbps} kbps · loss ${(webrtcStats.packetLoss * 100).toFixed(1)}% · RTT ${(webrtcStats.rtt * 1000).toFixed(0)} ms`
+        ? `${webrtcStats.encoder} · ${webrtcStats.width}×${webrtcStats.height} · ${webrtcStats.actualFps} FPS (${targetFps}) · ${webrtcStats.bitrateKbps} kbps · loss ${(webrtcStats.packetLoss * 100).toFixed(1)}% · RTT ${(webrtcStats.rtt * 1000).toFixed(0)} ms`
         : webrtcStats.status === "connecting"
         ? "WebRTC 连接中..."
         : webrtcStats.status === "error"
         ? webrtcStats.statusText || t("webrtcUnavailable")
-        : "")
+        : webrtcStats.statusText || "")
     : "";
 
   const header = (
@@ -321,7 +321,7 @@ export function ImagePanel({
             <Maximize2 />
           </Button>
         </div>
-        <span className="panel-meta">{displayMeta}</span>
+        <span className="panel-meta" title={webrtcStats?.encoderFallbackReason}>{displayMeta}</span>
     </>
   );
   const content = (
@@ -368,7 +368,7 @@ export function ImagePanel({
               }}
             />
         </div>
-        {topic && (!sourceAvailable || webrtcStats?.status === "error") && (
+        {topic && (!sourceAvailable || webrtcStats?.sourceAvailable === false || webrtcStats?.status === "error") && (
           <div role="status" style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", background: "var(--canvas)", color: "var(--text-muted)", pointerEvents: "none" }}>
             {webrtcStats?.statusText || "等待视频画面..."}
           </div>

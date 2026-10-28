@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Button, Notice, Toolbar } from "../ui";
+import { Button, Field, Notice, Select, Toolbar } from "../ui";
 import { useI18n } from "./i18n";
 
 export function ProjectSettings() {
@@ -49,6 +49,19 @@ export function ProjectSettings() {
     <h2>{en ? "Project runtime settings" : "项目运行设置"}</h2>
     <p className="settings-hint">{en ? "Edit validated JSON below. The server saves setting.yaml with a backup. Environment variables and startup arguments can override these values." : "以 JSON 编辑合法配置，服务端保存为 setting.yaml 并备份。环境变量及启动参数可覆盖这里的值。"}</p>
     {version && <>
+      <Field label={en ? "Video encoder" : "视频编码器"}>
+        <Select value={(() => { try { return JSON.parse(draft).services.video.encoder; } catch { return ""; } })()}
+          disabled={busy} onChange={(event) => {
+            try { const value = JSON.parse(draft); value.services.video.encoder = event.target.value; setDraft(JSON.stringify(value, null, 2)); }
+            catch { setError(en ? "Correct the JSON before selecting an encoder." : "请先修正 JSON，再选择编码器。"); }
+          }}>
+          <option value="auto">{en ? "Automatic (hardware, then x264)" : "自动（优先硬编码，失败回退 x264）"}</option>
+          <option value="intel">Intel VA-API</option>
+          <option value="x264">{en ? "Software (x264)" : "软件编码（x264）"}</option>
+          <option value="nvidia" disabled>{en ? "NVIDIA (not supported yet)" : "NVIDIA（暂未支持）"}</option>
+        </Select>
+      </Field>
+      <p className="settings-hint">{en ? "Intel mode also falls back to x264. Save to apply; externally loaded components require manual reload. Image settings show the actual encoder." : "Intel 模式失败时也会回退 x264。保存后应用；外部容器中的组件需手动重载。实际编码器及回退原因可在图像设置中查看。"}</p>
       <label><span>{en ? "Runtime configuration (JSON)" : "运行配置（JSON）"}</span>
         <textarea className="rv-textarea" aria-label={en ? "Runtime configuration (JSON)" : "运行配置（JSON）"} value={draft} onChange={(event) => setDraft(event.target.value)} rows={24} spellCheck={false}
           style={{ width: "100%", fontFamily: "var(--mono)", fontSize: "var(--fs-ui)" }} />

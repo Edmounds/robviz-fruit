@@ -6,4 +6,4 @@ robviz_video_gateway:
     min_bitrate_kbps: 150
     start_bitrate_kbps: 1000
     max_bitrate_kbps: 1000
-    prefer_hardware: true
+    encoder: auto

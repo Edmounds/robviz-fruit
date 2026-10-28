@@ -30,7 +30,7 @@ services:
     capture_topic: ""
     capture_output_dir: data/captures
     allow_lan_capture: true
-    prefer_hardware: false
+    encoder: auto
     default_target_fps: 10
     min_bitrate_kbps: 150
     start_bitrate_kbps: 1000

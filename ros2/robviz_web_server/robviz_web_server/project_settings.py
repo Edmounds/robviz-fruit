@@ -118,13 +118,20 @@ def load_project_settings(file=None):
         if not isinstance(config.get("host"), str) or type(config.get("enabled")) is not bool:
             raise ValueError(f"Invalid {name} settings")
     for section, key in (("files", "allow_lan_writes"), ("video", "allow_lan_capture"),
-                         ("video", "prefer_hardware"), ("terminal", "allow_lan")):
+                         ("terminal", "allow_lan")):
         if type(value["services"][section].get(key)) is not bool:
             raise ValueError(f"{section}.{key} must be boolean")
     for key in ("port", "preview_port"):
         if type(value["web"].get(key)) is not int or not 1 <= value["web"][key] <= 65535:
             raise ValueError(f"Invalid web.{key}")
     video = value["services"]["video"]
+    if "prefer_hardware" in video and type(video["prefer_hardware"]) is not bool:
+        raise ValueError("video.prefer_hardware must be boolean")
+    prefer_hardware = video.pop("prefer_hardware", True)
+    if "encoder" not in video:
+        video["encoder"] = "x264" if prefer_hardware is False else "auto"
+    if video["encoder"] not in ("auto", "intel", "x264"):
+        raise ValueError("video.encoder must be auto, intel or x264")
     for key in ("min_bitrate_kbps", "start_bitrate_kbps", "max_bitrate_kbps", "default_target_fps"):
         if type(video.get(key)) not in (int, float) or not 0 < video[key] <= (60 if key == "default_target_fps" else 1000000):
             raise ValueError(f"Invalid video.{key}")

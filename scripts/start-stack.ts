@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { once } from "node:events";
 import { createServer, createConnection } from "node:net";
 import { delimiter, join, resolve } from "node:path";
@@ -71,9 +71,13 @@ async function start(name: ManagedService, settings: ProjectSettings) {
   let args: string[];
   if (name === "web") args = [join(PROJECT_ROOT, "node_modules/vite/bin/vite.js"), ...(values.preview ? ["preview"] : []), "--host", host, "--port", String(port), "--strictPort"];
   else if (name === "terminal") args = ["--import", "tsx", join(PROJECT_ROOT, "terminal/server.ts")];
-  else {
+  else if (name === "video") {
+    const prefix = execFileSync("ros2", ["pkg", "prefix", "robviz_video_gateway"], { env, encoding: "utf8", timeout: 5000 }).trim();
+    command = join(prefix, "lib/robviz_video_gateway/gateway_node");
+    args = [];
+  } else {
     command = "/usr/bin/python3";
-    args = ["-m", name === "files" ? "robviz_web_server.web_server_node" : "robviz_video_gateway.gateway_node"];
+    args = ["-m", "robviz_web_server.web_server_node"];
   }
   status[name] = { state: "starting" };
   const child = spawn(command, args, { cwd: PROJECT_ROOT, env, stdio: ["ignore", "inherit", "inherit", "ipc"] });

@@ -7,13 +7,24 @@
   <maintainer email="cqc@todo.todo">cqc</maintainer>
   <license>MIT</license>
 
-  <depend>rclpy</depend>
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <depend>rclcpp</depend>
+  <depend>rclcpp_components</depend>
   <depend>sensor_msgs</depend>
-  <depend>cv_bridge</depend>
   <depend>std_srvs</depend>
-  <depend>robviz_web_server</depend>
-  <exec_depend>python3-opencv</exec_depend>
-  <exec_depend>python3-numpy</exec_depend>
+  <depend>yaml-cpp</depend>
+  <depend>nlohmann-json-dev</depend>
+  <depend>libopencv-dev</depend>
+  <depend>libgstreamer1.0-dev</depend>
+  <depend>libgstreamer-plugins-base1.0-dev</depend>
+  <depend>libgstreamer-plugins-bad1.0-dev</depend>
+  <depend>libsoup2.4-dev</depend>
+  <exec_depend>gstreamer1.0-plugins-good</exec_depend>
+  <exec_depend>gstreamer1.0-plugins-bad</exec_depend>
+  <exec_depend>gstreamer1.0-plugins-ugly</exec_depend>
+  <exec_depend>gstreamer1.0-vaapi</exec_depend>
+  <exec_depend>gstreamer1.0-nice</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>
@@ -21,6 +32,6 @@
   <test_depend>python3-pytest</test_depend>
 
   <export>
-    <build_type>ament_python</build_type>
+    <build_type>ament_cmake</build_type>
   </export>
 </package>

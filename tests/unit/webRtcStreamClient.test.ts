@@ -82,6 +82,24 @@ afterEach(() => {
 });
 
 describe("WebRtcStreamClient", () => {
+  it("reports source silence without closing signaling and resumes when images return", async () => {
+    const topic = "/camera/silence";
+    const stats = vi.fn();
+    watch(topic, "a", 30, vi.fn(), stats);
+    await Promise.resolve();
+    const socket = MockWebSocket.instances[0];
+    await offer(socket, topic);
+    MockPeer.instances[0].ontrack?.({ streams: [{}] });
+    await socket.onmessage?.({ data: JSON.stringify({ type: "stats", topic, sourceAvailable: false,
+      encoder: "x264enc", encoderInfo: { fallbackReason: "Intel initialization failed" }, encoderBitrateKbps: 1000 }) });
+    expect(stats.mock.calls.at(-1)?.[0]).toMatchObject({ status: "stopped", sourceAvailable: false,
+      encoder: "x264enc", encoderFallbackReason: "Intel initialization failed" });
+    expect(socket.readyState).toBe(MockWebSocket.OPEN);
+    expect(MockPeer.instances[0].closed).toBe(false);
+    await socket.onmessage?.({ data: JSON.stringify({ type: "stats", topic, sourceAvailable: true }) });
+    expect(stats.mock.calls.at(-1)?.[0]).toMatchObject({ status: "streaming", sourceAvailable: true, statusText: undefined });
+    expect(MockPeer.instances).toHaveLength(1);
+  });
   it("discovers probed sources without negotiating video, and releases its polling", async () => {
     vi.useFakeTimers();
     const topics = vi.fn();

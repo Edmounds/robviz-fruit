@@ -25,17 +25,22 @@ export const projectSettingsSchema = z.object({
   }).strict(),
   services: z.object({
     files: z.object({ ...service, data_dir: path, allow_lan_writes: z.boolean() }).strict(),
-    video: z.object({
+    video: z.preprocess((value) => {
+      if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+      const { prefer_hardware, ...video } = value as Record<string, unknown>;
+      if (prefer_hardware !== undefined && typeof prefer_hardware !== "boolean") return value;
+      return { ...video, encoder: video.encoder === undefined ? (prefer_hardware === false ? "x264" : "auto") : video.encoder };
+    }, z.object({
       ...service,
       capture_topic: z.string().max(255).regex(/^(?:\/(?:[A-Za-z_][A-Za-z0-9_]*)(?:\/[A-Za-z_][A-Za-z0-9_]*)*)?$/),
       capture_output_dir: path,
       allow_lan_capture: z.boolean(),
-      prefer_hardware: z.boolean(),
+      encoder: z.enum(["auto", "intel", "x264"]),
       default_target_fps: z.number().min(1).max(60),
       min_bitrate_kbps: z.number().int().min(1).max(1000000),
       start_bitrate_kbps: z.number().int().min(1).max(1000000),
       max_bitrate_kbps: z.number().int().min(1).max(1000000),
-    }).strict(),
+    }).strict()),
     terminal: z.object({ ...service, allow_lan: z.boolean() }).strict(),
   }).strict(),
 }).strict().superRefine((settings, ctx) => {

@@ -49,6 +49,9 @@ HTTP 返回 `applied: false, status: awaiting_ros_reload`，不把写入文件�
 
 ## 视频网关
 
+视频网关现为 C++ Component。构建依赖、与相机共用容器和编码检测说明见
+[视频组件部署](11-video-component.md)。不需要修改相机驱动源码。
+
 构建 `robviz_web_server` 与 `robviz_video_gateway` 后，在自己的 ROS 环境中启动：
 
 ```bash
@@ -82,10 +85,11 @@ PYTHONPATH=ros2/robviz_web_server /usr/bin/python3 -m unittest discover -s ros2/
 视频协议检查使用独立 ROS domain、本机合成图像和临时输出目录：
 
 ```bash
-export ROS_LOCALHOST_ONLY=1 ROS_DOMAIN_ID=213
-PYTHONPATH="$PWD/ros2/robviz_video_gateway:$PWD/ros2/robviz_web_server:$PYTHONPATH" \
+export ROS_LOCALHOST_ONLY=1 ROS_DOMAIN_ID=218
+export ROBVIZ_SYNTHETIC_CAMERA="$PWD/install/robviz_video_gateway/lib/robviz_video_gateway/synthetic_camera_graph"
+PYTHONPATH="$PWD/ros2/robviz_web_server:$PYTHONPATH" \
   /usr/bin/python3 -m unittest discover -s ros2/robviz_video_gateway/test -p test_capture_protocol.py
 ```
 
-先 source 自己的 ROS 运行环境，必须使用系统 OpenCV ABI。
+先按组件部署文档启用 `BUILD_TESTING` 构建，再 source 自己的 ROS 运行环境，必须使用系统 OpenCV ABI。
 这些检查不连接真机、不验证真实相机编码性能，也不触发机器人动作。

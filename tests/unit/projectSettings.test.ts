@@ -41,6 +41,23 @@ describe("private-network protocol boundary", () => {
 });
 
 describe("project settings document protocol", () => {
+  it("validates encoder choices and migrates legacy hardware preference", () => {
+    const base = readSettings().settings;
+    expect(base.services.video.encoder).toBe("auto");
+    expect(effectiveSettings(base, { ROBVIZ_SERVICES_VIDEO_ENCODER: "intel" }).services.video.encoder).toBe("intel");
+    expect(() => effectiveSettings(base, { ROBVIZ_SERVICES_VIDEO_ENCODER: "nvidia" })).toThrow();
+    const legacy = JSON.parse(JSON.stringify(base));
+    delete legacy.services.video.encoder;
+    legacy.services.video.prefer_hardware = false;
+    expect(parseSettings(stringify(legacy)).services.video.encoder).toBe("x264");
+    legacy.services.video.prefer_hardware = true;
+    expect(parseSettings(stringify(legacy)).services.video.encoder).toBe("auto");
+    legacy.services.video.prefer_hardware = "false";
+    expect(() => parseSettings(stringify(legacy))).toThrow();
+    const invalid = structuredClone(base);
+    (invalid.services.video as Record<string, unknown>).encoder = null;
+    expect(() => parseSettings(stringify(invalid))).toThrow();
+  });
   it("uses YAML defaults and validated environment overrides", () => {
     const base = readSettings().settings;
     expect(base.network.allow_lan).toBe(true);

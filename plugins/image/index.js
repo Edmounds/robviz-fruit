@@ -24,7 +24,7 @@ function _(e) {
 //#endregion
 //#region plugins/image/ImageSettings.tsx
 function v({ ctx: n }) {
-	let m = n.locale === "en", v = n.pluginStates.image, y = typeof v?.reloadService == "string" ? v.reloadService : "/robviz/reload_image_settings", [b, x] = d(), [S, C] = d(!1), [w, T] = d(""), E = u(null);
+	let m = n.locale === "en", v = n.pluginStates.image, y = typeof v?.reloadService == "string" ? v.reloadService : "/robviz/reload_image_settings", [b, x] = d(), [S, C] = d(!1), [w, T] = d(""), [E, D] = d(), [O, k] = d(""), [A, j] = d([]), M = n.mediaUrl || n.getServiceUrl("video"), N = u(null);
 	l(() => {
 		let e = !1;
 		return h().then((t) => {
@@ -34,9 +34,39 @@ function v({ ctx: n }) {
 		}), () => {
 			e = !0;
 		};
-	}, []);
-	let D = c(async (e) => {
-		if (!(!b || S || !s(E.current))) {
+	}, []), l(() => {
+		let e;
+		try {
+			let t = new URL(M);
+			t.protocol = ["https:", "wss:"].includes(t.protocol) ? "wss:" : "ws:", (!t.pathname || t.pathname === "/") && (t.pathname = "/ws"), e = new WebSocket(t);
+		} catch {
+			k(m ? "Video gateway unavailable" : "视频网关不可用");
+			return;
+		}
+		e.onopen = () => e.send(JSON.stringify({ type: "getMeta" })), e.onmessage = (e) => {
+			try {
+				let t = JSON.parse(e.data);
+				t.type === "meta" && t.encoder && typeof t.encoder.actual == "string" && (D(t.encoder), k(""), j(Object.entries(t.streams || {}).flatMap(([e, t]) => {
+					let n = t;
+					return typeof n?.encoder?.actual == "string" ? [{
+						topic: e,
+						actual: n.encoder.actual,
+						fallbackReason: n.encoder.fallbackReason || ""
+					}] : [];
+				})));
+			} catch {
+				k(m ? "Invalid gateway status" : "网关状态无效");
+			}
+		}, e.onerror = () => k(m ? "Video gateway unavailable" : "视频网关不可用");
+		let t = setInterval(() => {
+			e.readyState === WebSocket.OPEN && e.send(JSON.stringify({ type: "getMeta" }));
+		}, 3e3);
+		return () => {
+			clearInterval(t), e.onmessage = e.onerror = null, e.close();
+		};
+	}, [M, m]);
+	let P = c(async (e) => {
+		if (!(!b || S || !s(N.current))) {
 			C(!0), T("");
 			try {
 				if (!/^\/(?:[A-Za-z_][A-Za-z0-9_]*)(?:\/[A-Za-z_][A-Za-z0-9_]*)*$/.test(y)) throw Error("Invalid ROS service name");
@@ -60,7 +90,7 @@ function v({ ctx: n }) {
 		y,
 		n,
 		m
-	]), O = (e, t, n) => {
+	]), F = (e, t, n) => {
 		x((r) => r && {
 			...r,
 			[e]: {
@@ -70,8 +100,32 @@ function v({ ctx: n }) {
 		});
 	};
 	return /* @__PURE__ */ p("div", {
-		ref: E,
+		ref: N,
 		children: [
+			/* @__PURE__ */ p("section", {
+				className: "settings-section",
+				children: [
+					/* @__PURE__ */ f("h2", { children: m ? "Video encoder" : "视频编码器" }),
+					/* @__PURE__ */ f("p", { children: m ? "Choose Automatic, Intel VA-API or software x264 in General → Project runtime settings." : "在“通用 → 项目运行设置”中选择自动、Intel VA-API 或软件 x264。" }),
+					E && /* @__PURE__ */ p("p", { children: [
+						m ? "Startup probe" : "启动探测",
+						": ",
+						E.preference,
+						" → ",
+						E.actual,
+						" · ",
+						E.hardware ? m ? "Hardware encoding" : "硬件编码" : m ? "CPU software encoding" : "CPU 软件编码"
+					] }),
+					E?.fallbackReason && /* @__PURE__ */ f(r, { children: E.fallbackReason }),
+					A.map((e) => /* @__PURE__ */ p("p", { children: [
+						e.topic,
+						": ",
+						e.actual,
+						e.fallbackReason ? ` · ${e.fallbackReason}` : ""
+					] }, e.topic)),
+					O && /* @__PURE__ */ f(r, { children: O })
+				]
+			}),
 			/* @__PURE__ */ f("p", { children: m ? "Settings require a confirmed ROS reload. Missing backends do not affect the host." : "配置只有在 ROS 重载并确认版本后才算生效。缺少后端不影响宿主。" }),
 			/* @__PURE__ */ f(t, {
 				label: m ? "ROS reload service" : "ROS 重载服务",
@@ -96,7 +150,7 @@ function v({ ctx: n }) {
 							step: "any",
 							value: b[e].bandwidth_mbps,
 							onValueChange: (t) => {
-								t !== void 0 && O(e, "bandwidth_mbps", t);
+								t !== void 0 && F(e, "bandwidth_mbps", t);
 							}
 						})
 					}),
@@ -108,7 +162,7 @@ function v({ ctx: n }) {
 							step: 1,
 							value: b[e].max_fps,
 							onValueChange: (t) => {
-								t !== void 0 && O(e, "max_fps", t);
+								t !== void 0 && F(e, "max_fps", t);
 							}
 						})
 					}),
@@ -120,7 +174,7 @@ function v({ ctx: n }) {
 							step: .1,
 							value: b[e].target_bitrate_mbps,
 							onValueChange: (t) => {
-								t !== void 0 && O(e, "target_bitrate_mbps", t);
+								t !== void 0 && F(e, "target_bitrate_mbps", t);
 							}
 						})
 					})
@@ -129,12 +183,12 @@ function v({ ctx: n }) {
 			/* @__PURE__ */ p(o, { children: [
 				/* @__PURE__ */ f(e, {
 					disabled: !b || S,
-					onClick: () => void D(!1),
+					onClick: () => void P(!1),
 					children: m ? "Apply" : "应用"
 				}),
 				/* @__PURE__ */ f(e, {
 					disabled: !b || S,
-					onClick: () => void D(!0),
+					onClick: () => void P(!0),
 					children: m ? "Save as default" : "保存为默认"
 				}),
 				b && /* @__PURE__ */ p("span", { children: [

@@ -20,6 +20,8 @@ export interface WebRtcStreamStats {
   sourceEncoding?: string;
   rtt: number;
   encoder: string;
+  encoderFallbackReason?: string;
+  sourceAvailable?: boolean;
   status: "idle" | "connecting" | "streaming" | "congested" | "error" | "stopped";
   statusText?: string;
   transport?: "webrtc" | "jpeg";
@@ -184,13 +186,17 @@ class TopicPeer {
             this.notifyStats();
           }
         } else if (msg.type === "stats" && msg.topic === this.topic) {
-          if (Number.isFinite(msg.encoderBitrateKbps)) {
-            this.currentStats = {
-              ...this.currentStats,
-              encoderBitrateKbps: msg.encoderBitrateKbps,
-            };
-            this.notifyStats();
-          }
+          this.currentStats = {
+            ...this.currentStats,
+            ...(Number.isFinite(msg.encoderBitrateKbps) ? { encoderBitrateKbps: msg.encoderBitrateKbps } : {}),
+            ...(typeof msg.encoder === "string" ? { encoder: msg.encoder } : {}),
+            ...(typeof msg.encoderInfo?.fallbackReason === "string" ? { encoderFallbackReason: msg.encoderInfo.fallbackReason } : {}),
+            ...(typeof msg.sourceAvailable === "boolean" ? { sourceAvailable: msg.sourceAvailable,
+              status: msg.sourceAvailable ? (this.stream ? "streaming" as const : "connecting" as const) : "stopped" as const,
+              statusText: msg.sourceAvailable ? undefined : "Camera stream interrupted. Waiting for images...",
+            } : {}),
+          };
+          this.notifyStats();
         } else if (msg.type === "error" && (!msg.topic || msg.topic === this.topic)) {
           if (msg.code === "unsupported_encoding" && typeof msg.encoding === "string") {
             this.currentStats = { ...this.currentStats, sourceEncoding: msg.encoding };
@@ -348,7 +354,7 @@ class TopicPeer {
           height: Number(inbound.frameHeight || 0),
           packetLoss: lossRate,
           rtt,
-          status: isCongested ? "congested" : "streaming",
+          status: this.currentStats.sourceAvailable === false ? "stopped" : isCongested ? "congested" : "streaming",
         };
         this.notifyStats();
 
@@ -398,6 +404,7 @@ class TopicPeer {
     this.currentStats = {
       ...this.currentStats, actualFps: 0, bitrateKbps: 0, width: 0, height: 0,
       packetLoss: 0, rtt: 0, encoderBitrateKbps: undefined,
+      sourceAvailable: undefined, encoderFallbackReason: undefined,
     };
     for (const v of this.viewers.values()) {
       v.onStream(null);
