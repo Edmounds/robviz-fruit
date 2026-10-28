@@ -31,7 +31,7 @@ export function projectSettingsPlugin(): Plugin {
           host: listenHost(effective, effective.services.terminal.host, effective.services.terminal.allow_lan),
           port: effective.services.terminal.port, allow_lan: effective.network.allow_lan && effective.services.terminal.allow_lan,
         },
-        video: { port: effective.services.video.port }, files: { port: effective.services.files.port, proxy: true },
+        video: { host: listenHost(effective, effective.services.video.host), port: effective.services.video.port }, files: { port: effective.services.files.port, proxy: true },
       });
       if (req.method === "GET" && path === "/") return send(200, { ...current, effective, status, pending, managed });
       if (req.method !== "POST" || !["/preview", "/save"].includes(path)) return send(405, { error: "Expected GET or JSON POST" });
